@@ -1,13 +1,21 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import './index.css';
 import App from './App';
+import AdminPanel from './components/AdminPanel';
 import reportWebVitals from './reportWebVitals';
+import './storage.js';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <React.StrictMode>
-    <App />
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<App />} />
+        <Route path="/admin" element={<AdminPanel />} />
+      </Routes>
+    </BrowserRouter>
   </React.StrictMode>
 );
 
