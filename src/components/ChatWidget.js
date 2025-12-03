@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MessageCircle, X, Send, Minimize2, HelpCircle } from 'lucide-react';
 
-const API_URL = 'http://localhost:3002/api';
+const API_URL = `${process.env.REACT_APP_API_URL || 'http://localhost:3002'}/api`;
 
 export default function ChatWidget({ calculatorContext }) {
   const [isOpen, setIsOpen] = useState(false);

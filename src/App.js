@@ -2,6 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { DollarSign, Users, Code, Database, Plug, Calculator, AlertCircle, CheckCircle, Save, Download, Trash2, FileText, BarChart3 } from 'lucide-react';
 import ChatWidget from './components/ChatWidget';
 
+// API Configuration
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
+const PDF_SERVICE_URL = process.env.REACT_APP_PDF_SERVICE_URL || 'http://localhost:5001';
+
+// Helper function to safely format numbers
+const safeNumber = (value, defaultValue = 0) => {
+  const num = parseFloat(value);
+  return isNaN(num) || !isFinite(num) ? defaultValue : num;
+};
+
 export default function RORACCalculator() {
   // CFA Branding
   const COMPANY_NAME = 'A CFAi App';
@@ -43,6 +53,13 @@ export default function RORACCalculator() {
   const [databaseRate, setDatabaseRate] = useState('');
   const [apiHours, setApiHours] = useState('');
   const [apiRate, setApiRate] = useState('');
+  
+  // Fees
+  const [creditPullFee, setCreditPullFee] = useState('');
+  const [uccCost, setUccCost] = useState('');
+  const [uccPaidBy, setUccPaidBy] = useState('client'); // 'paid' or 'client'
+  const [modificationFee, setModificationFee] = useState('');
+  const [modificationPaidBy, setModificationPaidBy] = useState('client'); // 'paid' or 'client'
   
   // Approval Thresholds
   const [cooThreshold, setCooThreshold] = useState('100000');
@@ -88,6 +105,7 @@ export default function RORACCalculator() {
       timestamp: new Date().toISOString(),
       data: {
         loanAmount, points, loanTerm,
+        creditPullFee, uccCost, uccPaidBy, modificationFee, modificationPaidBy,
         licenseCostPerUser, licenseUsers, licenseBaseCost,
         internalRate, internalHours, vendorRate, vendorHours,
         annualMaintenanceHours, maintenanceRate,
@@ -118,6 +136,11 @@ export default function RORACCalculator() {
     setLoanAmount(d.loanAmount);
     setPoints(d.points);
     setLoanTerm(d.loanTerm);
+    setCreditPullFee(d.creditPullFee || '');
+    setUccCost(d.uccCost || '');
+    setUccPaidBy(d.uccPaidBy || 'client');
+    setModificationFee(d.modificationFee || '');
+    setModificationPaidBy(d.modificationPaidBy || 'client');
     setLicenseCostPerUser(d.licenseCostPerUser);
     setLicenseUsers(d.licenseUsers);
     setLicenseBaseCost(d.licenseBaseCost);
@@ -168,12 +191,12 @@ export default function RORACCalculator() {
     const rows = savedDeals.map(deal => [
       deal.name,
       new Date(deal.timestamp).toLocaleDateString(),
-      deal.results.revenue.toFixed(2),
-      deal.results.totalCosts.toFixed(2),
-      deal.results.netProfit.toFixed(2),
-      deal.results.rorac.toFixed(2),
-      deal.results.totalCosts >= parseFloat(deal.data.cooThreshold) ? 'Yes' : 'No',
-      deal.results.totalCosts >= parseFloat(deal.data.ceoThreshold) ? 'Yes' : 'No'
+      safeNumber(deal.results?.revenue).toFixed(2),
+      safeNumber(deal.results?.totalCosts).toFixed(2),
+      safeNumber(deal.results?.netProfit).toFixed(2),
+      safeNumber(deal.results?.rorac).toFixed(2),
+      safeNumber(deal.results?.totalCosts) >= parseFloat(deal.data?.cooThreshold || 0) ? 'Yes' : 'No',
+      safeNumber(deal.results?.totalCosts) >= parseFloat(deal.data?.ceoThreshold || 0) ? 'Yes' : 'No'
     ]);
 
     const csv = [headers, ...rows].map(row => row.join(',')).join('\n');
@@ -185,12 +208,17 @@ export default function RORACCalculator() {
     a.click();
   };
 
-  const exportCurrentDeal = () => {
+  const exportCurrentDeal = async () => {
     const dealData = {
       dealName,
       timestamp: new Date().toISOString(),
       inputs: {
         loan: { amount: loanAmount, points, term: loanTerm },
+        fees: { 
+          creditPull: creditPullFee,
+          ucc: { cost: uccCost, paidBy: uccPaidBy },
+          modification: { cost: modificationFee, paidBy: modificationPaidBy }
+        },
         licensing: { baseCost: licenseBaseCost, perUser: licenseCostPerUser, users: licenseUsers },
         implementation: { internalRate, internalHours, vendorRate, vendorHours },
         maintenance: { annualHours: annualMaintenanceHours, rate: maintenanceRate },
@@ -204,6 +232,7 @@ export default function RORACCalculator() {
       results: {
         revenue: calculateRevenue(),
         costs: {
+          fees: calculateFees(),
           licensing: calculateLicensing(),
           implementation: calculateImplementation(),
           maintenance: calculateMaintenance(),
@@ -219,13 +248,30 @@ export default function RORACCalculator() {
       }
     };
 
-    const json = JSON.stringify(dealData, null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${dealName || 'deal'}_analysis.json`;
-    a.click();
+    try {
+      const response = await fetch(`${PDF_SERVICE_URL}/api/generate-pdf`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(dealData)
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate PDF');
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${dealName || 'deal'}_analysis.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('Failed to generate PDF. Make sure the PDF service is running.');
+    }
   };
 
   const clearForm = () => {
@@ -234,6 +280,11 @@ export default function RORACCalculator() {
       setLoanAmount('');
       setPoints('');
       setLoanTerm('36');
+      setCreditPullFee('');
+      setUccCost('');
+      setUccPaidBy('client');
+      setModificationFee('');
+      setModificationPaidBy('client');
       setLicenseCostPerUser('');
       setLicenseUsers('');
       setLicenseBaseCost('');
@@ -296,14 +347,34 @@ export default function RORACCalculator() {
     
     return config + code + db + api;
   };
-
+  
+  const calculateFees = () => {
+    let feesCost = 0;
+    
+    // Credit Pull Fee (FICO, Experian, TransUnion) - always a cost
+    feesCost += parseFloat(creditPullFee) || 0;
+    
+    // UCC Cost - only a cost if we pay it
+    if (uccPaidBy === 'paid') {
+      feesCost += parseFloat(uccCost) || 0;
+    }
+    
+    // Modification Fee - only a cost if we pay it
+    if (modificationPaidBy === 'paid') {
+      feesCost += parseFloat(modificationFee) || 0;
+    }
+    
+    return feesCost;
+  };
+  
   const revenue = calculateRevenue();
   const licensingCost = calculateLicensing();
   const implementationCost = calculateImplementation();
   const maintenanceCost = calculateMaintenance();
   const customDevCost = calculateCustomDev();
+  const feesCost = calculateFees();
   
-  const totalCosts = licensingCost + implementationCost + maintenanceCost + customDevCost;
+  const totalCosts = licensingCost + implementationCost + maintenanceCost + customDevCost + feesCost;
   const netProfit = revenue - totalCosts;
   const rorac = revenue > 0 ? ((netProfit / totalCosts) * 100) : 0;
   
@@ -439,21 +510,21 @@ export default function RORACCalculator() {
                         <div className="grid grid-cols-4 gap-4 mt-2 text-sm">
                           <div>
                             <span className="text-slate-600">Revenue:</span>
-                            <span className="font-semibold ml-1">${deal.results.revenue.toLocaleString()}</span>
+                            <span className="font-semibold ml-1">${safeNumber(deal.results?.revenue).toLocaleString()}</span>
                           </div>
                           <div>
                             <span className="text-slate-600">Costs:</span>
-                            <span className="font-semibold ml-1">${deal.results.totalCosts.toLocaleString()}</span>
+                            <span className="font-semibold ml-1">${safeNumber(deal.results?.totalCosts).toLocaleString()}</span>
                           </div>
                           <div>
                             <span className="text-slate-600">Profit:</span>
-                            <span className={`font-semibold ml-1 ${deal.results.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                              ${deal.results.netProfit.toLocaleString()}
+                            <span className={`font-semibold ml-1 ${safeNumber(deal.results?.netProfit) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              ${safeNumber(deal.results?.netProfit).toLocaleString()}
                             </span>
                           </div>
                           <div>
                             <span className="text-slate-600">RORAC:</span>
-                            <span className="font-semibold ml-1">{deal.results.rorac.toFixed(2)}%</span>
+                            <span className="font-semibold ml-1">{safeNumber(deal.results?.rorac).toFixed(2)}%</span>
                           </div>
                         </div>
                       </div>
@@ -513,34 +584,34 @@ export default function RORACCalculator() {
                   <tr className="border-b">
                     <td className="p-2 text-slate-600">Revenue</td>
                     {selectedDeals.map(deal => (
-                      <td key={deal.id} className="p-2 font-semibold">${deal.results.revenue.toLocaleString()}</td>
+                      <td key={deal.id} className="p-2 font-semibold">${safeNumber(deal.results?.revenue).toLocaleString()}</td>
                     ))}
                   </tr>
                   <tr className="border-b">
                     <td className="p-2 text-slate-600">Total Costs</td>
                     {selectedDeals.map(deal => (
-                      <td key={deal.id} className="p-2 font-semibold">${deal.results.totalCosts.toLocaleString()}</td>
+                      <td key={deal.id} className="p-2 font-semibold">${safeNumber(deal.results?.totalCosts).toLocaleString()}</td>
                     ))}
                   </tr>
                   <tr className="border-b">
                     <td className="p-2 text-slate-600">Net Profit</td>
                     {selectedDeals.map(deal => (
-                      <td key={deal.id} className={`p-2 font-semibold ${deal.results.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        ${deal.results.netProfit.toLocaleString()}
+                      <td key={deal.id} className={`p-2 font-semibold ${safeNumber(deal.results?.netProfit) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        ${safeNumber(deal.results?.netProfit).toLocaleString()}
                       </td>
                     ))}
                   </tr>
                   <tr className="border-b">
                     <td className="p-2 text-slate-600">RORAC</td>
                     {selectedDeals.map(deal => (
-                      <td key={deal.id} className="p-2 font-semibold">{deal.results.rorac.toFixed(2)}%</td>
+                      <td key={deal.id} className="p-2 font-semibold">{safeNumber(deal.results?.rorac).toFixed(2)}%</td>
                     ))}
                   </tr>
                   <tr className="border-b">
                     <td className="p-2 text-slate-600">COO Approval</td>
                     {selectedDeals.map(deal => (
                       <td key={deal.id} className="p-2">
-                        {deal.results.totalCosts >= parseFloat(deal.data.cooThreshold) ? '✓ Required' : '✗ Not Required'}
+                        {safeNumber(deal.results?.totalCosts) >= parseFloat(deal.data?.cooThreshold || 0) ? '✓ Required' : '✗ Not Required'}
                       </td>
                     ))}
                   </tr>
@@ -548,7 +619,7 @@ export default function RORACCalculator() {
                     <td className="p-2 text-slate-600">CEO Approval</td>
                     {selectedDeals.map(deal => (
                       <td key={deal.id} className="p-2">
-                        {deal.results.totalCosts >= parseFloat(deal.data.ceoThreshold) ? '✓ Required' : '✗ Not Required'}
+                        {safeNumber(deal.results?.totalCosts) >= parseFloat(deal.data?.ceoThreshold || 0) ? '✓ Required' : '✗ Not Required'}
                       </td>
                     ))}
                   </tr>
@@ -603,6 +674,94 @@ export default function RORACCalculator() {
             </div>
           </div>
 
+          {/* Fees Section */}
+          <div className="bg-white rounded-xl shadow-lg p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <DollarSign className="w-6 h-6 text-blue-600" />
+              <h2 className="text-xl font-bold text-slate-800">Fees</h2>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Credit Pull Fees ($)</label>
+                <input
+                  type="number"
+                  value={creditPullFee}
+                  onChange={(e) => setCreditPullFee(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="FICO, Experian, TransUnion"
+                />
+                <p className="text-xs text-slate-500 mt-1">Combined cost for credit bureau reports</p>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">UCC Filing Cost ($)</label>
+                <input
+                  type="number"
+                  value={uccCost}
+                  onChange={(e) => setUccCost(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="0"
+                />
+                <div className="mt-2">
+                  <label className="inline-flex items-center mr-4">
+                    <input
+                      type="radio"
+                      value="paid"
+                      checked={uccPaidBy === 'paid'}
+                      onChange={(e) => setUccPaidBy(e.target.value)}
+                      className="mr-2"
+                    />
+                    <span className="text-sm text-slate-700">We Pay</span>
+                  </label>
+                  <label className="inline-flex items-center">
+                    <input
+                      type="radio"
+                      value="client"
+                      checked={uccPaidBy === 'client'}
+                      onChange={(e) => setUccPaidBy(e.target.value)}
+                      className="mr-2"
+                    />
+                    <span className="text-sm text-slate-700">Client Pays (Billback)</span>
+                  </label>
+                </div>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Modification Fees ($)</label>
+                <input
+                  type="number"
+                  value={modificationFee}
+                  onChange={(e) => setModificationFee(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="0"
+                />
+                <div className="mt-2">
+                  <label className="inline-flex items-center mr-4">
+                    <input
+                      type="radio"
+                      value="paid"
+                      checked={modificationPaidBy === 'paid'}
+                      onChange={(e) => setModificationPaidBy(e.target.value)}
+                      className="mr-2"
+                    />
+                    <span className="text-sm text-slate-700">We Pay</span>
+                  </label>
+                  <label className="inline-flex items-center">
+                    <input
+                      type="radio"
+                      value="client"
+                      checked={modificationPaidBy === 'client'}
+                      onChange={(e) => setModificationPaidBy(e.target.value)}
+                      className="mr-2"
+                    />
+                    <span className="text-sm text-slate-700">Client Pays (Billback)</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Licensing Costs */}
           <div className="bg-white rounded-xl shadow-lg p-6">
             <div className="flex items-center gap-2 mb-4">
@@ -639,6 +798,34 @@ export default function RORACCalculator() {
                   type="number"
                   value={licenseUsers}
                   onChange={(e) => setLicenseUsers(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="0"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Ongoing Maintenance */}
+          <div className="bg-white rounded-xl shadow-lg p-6">
+            <h2 className="text-xl font-bold text-slate-800 mb-4">Ongoing Maintenance</h2>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Annual Hours</label>
+                <input
+                  type="number"
+                  value={annualMaintenanceHours}
+                  onChange={(e) => setAnnualMaintenanceHours(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="0"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Blended Rate ($/hour)</label>
+                <input
+                  type="number"
+                  value={maintenanceRate}
+                  onChange={(e) => setMaintenanceRate(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                   placeholder="0"
                 />
@@ -698,34 +885,6 @@ export default function RORACCalculator() {
                   placeholder="0"
                 />
               </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Maintenance Costs */}
-        <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
-          <h2 className="text-xl font-bold text-slate-800 mb-4">Ongoing Maintenance</h2>
-          
-          <div className="grid md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Annual Hours</label>
-              <input
-                type="number"
-                value={annualMaintenanceHours}
-                onChange={(e) => setAnnualMaintenanceHours(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                placeholder="0"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Blended Rate ($/hour)</label>
-              <input
-                type="number"
-                value={maintenanceRate}
-                onChange={(e) => setMaintenanceRate(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                placeholder="0"
-              />
             </div>
           </div>
         </div>
@@ -890,6 +1049,10 @@ export default function RORACCalculator() {
           <div className="space-y-4">
             <h3 className="text-xl font-semibold mb-3">Cost Breakdown</h3>
             <div className="grid md:grid-cols-2 gap-4">
+              <div className="bg-white/10 rounded-lg p-4">
+                <div className="text-sm opacity-90">Fees</div>
+                <div className="text-xl font-semibold">${feesCost.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+              </div>
               <div className="bg-white/10 rounded-lg p-4">
                 <div className="text-sm opacity-90">Licensing (over {loanTerm} months)</div>
                 <div className="text-xl font-semibold">${licensingCost.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>

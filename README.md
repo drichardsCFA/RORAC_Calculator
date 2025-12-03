@@ -11,23 +11,28 @@ A sophisticated Return on Risk-Adjusted Capital (RORAC) calculator with an integ
 The RORAC Calculator is designed for business development teams to quickly estimate costs for implementing and onboarding new clients or expanding existing relationships. It features:
 
 - **Deal Calculator**: Comprehensive cost estimation for loans and implementations
+- **PDF Export**: Professional business reports for client meetings
+- **Fee Management**: Track credit pulls, UCC filings, and modification fees
 - **Smart Assistant**: AI-powered chatbot for instant pricing and process information
 - **Knowledge Base**: Searchable repository of team rates, pricing, and FAQs
 - **Admin Panel**: Easy management of knowledge base entries
 - **Analytics**: Track usage and improve responses over time
 - **Azure Integration**: Enterprise-grade authentication with Microsoft Entra ID
+- **Cloud Ready**: Docker containers for Azure deployment
 
 ## ✨ Key Features
 
 ### RORAC Calculator
 - Loan amount and terms calculation
+- **Fee management**: Credit pull fees, UCC costs, modification fees
 - Licensing cost estimation (base + per-user)
 - Implementation resource planning (internal + vendor)
 - Maintenance cost projections
 - Custom development estimates (config, code, database, API)
 - Automatic approval threshold detection (COO/CEO)
-- Deal comparison and export (CSV/JSON)
-- Deal save/load functionality
+- Deal comparison and export (CSV)
+- **PDF export**: Professional business reports
+- Deal save/load functionality (browser storage)
 
 ### Smart Assistant
 - Natural language question processing
@@ -49,8 +54,10 @@ The RORAC Calculator is designed for business development teams to quickly estim
 
 ### Prerequisites
 - Node.js 16+ and npm
+- Python 3.11+ (for PDF service)
 - Git
 - Azure Entra ID tenant (for auth)
+- Docker Desktop (optional, for deployment)
 
 ### Installation
 
@@ -63,6 +70,9 @@ cd RORAC_Calculator
 2. **Install dependencies**
 ```bash
 npm install
+cd pdf_service
+pip install -r requirements.txt
+cd ..
 ```
 
 3. **Configure environment**
@@ -79,10 +89,17 @@ cp .env.example .env
 
 4. **Start the application**
 ```bash
+# Option 1: Automated (Windows)
+start.bat
+
+# Option 2: Manual
 npm run dev
 ```
 
-This runs both the React frontend (port 3000) and API server (port 3001).
+This runs all three services:
+- React frontend (port 3000)
+- Node.js API server (port 3002)
+- Python PDF service (port 5001)
 
 5. **Open in browser**
 ```
@@ -91,9 +108,10 @@ http://localhost:3000
 
 ## 📚 Documentation
 
-- **[Quick Start Guide](QUICK_START.md)** - Get up and running fast
+- **[Quick Start Guide](QUICK_START_GUIDE.md)** - Get up and running fast
 - **[Complete Documentation](README_CHATBOT.md)** - Full feature guide
-- **[Azure Setup](ENTRA_ID_SETUP.md)** - Authentication configuration
+- **[Azure Deployment Guide](deployment/AZURE_DEPLOYMENT_GUIDE.md)** - Deploy to Azure staging
+- **[PDF Service Docs](pdf_service/README.md)** - PDF generation service
 - **[API Reference](#api-endpoints)** - Backend API documentation
 
 ## 🏗️ Architecture
@@ -101,7 +119,7 @@ http://localhost:3000
 ```
 ┌─────────────────────────────────────────┐
 │          React Frontend                 │
-│         (Port 3000)                     │
+│         (Port 3000/5000)                │
 │                                         │
 │  ┌──────────────┐  ┌─────────────┐    │
 │  │   RORAC      │  │   Chat      │    │
@@ -113,18 +131,24 @@ http://localhost:3000
           │                  │
 ┌─────────▼──────────────────▼───────────┐
 │        Express.js API Server            │
-│           (Port 3001)                   │
+│           (Port 3002)                   │
 │                                         │
 │  ┌──────────┐  ┌──────────────────┐   │
 │  │  Auth    │  │  Smart Search    │   │
 │  │Middleware│  │  (NLP Engine)    │   │
 │  └──────────┘  └──────────────────┘   │
-└─────────┬───────────────────────────────┘
-          │
+└─────────┬───────────────┬───────────────┘
+          │               │
+          │          ┌────▼─────────────┐
+          │          │  Python/Flask    │
+          │          │  PDF Service     │
+          │          │  (Port 5001)     │
+          │          └──────────────────┘
 ┌─────────▼───────────┐
 │  SQLite Database    │
 │  - Knowledge Base   │
 │  - Chat History     │
+│  - Saved Deals      │
 └─────────────────────┘
 ```
 
@@ -141,8 +165,12 @@ http://localhost:3000
 - **SQLite (better-sqlite3)** - Database
 - **Natural** - NLP library
 - **MSAL Node** - Azure authentication
+- **Python 3.11 + Flask** - PDF generation service
+- **ReportLab** - PDF creation library
 
 ### DevOps
+- **Docker** - Containerization
+- **Azure App Service** - Cloud hosting
 - **Concurrently** - Run multiple servers
 - **dotenv** - Environment configuration
 
@@ -198,19 +226,29 @@ node test-api.js
 
 ### Development
 ```bash
+# Windows - One-click launch
+start.bat
+
+# Or manually
 npm run dev
 ```
 
-### Production
-```bash
-# Build React app
-npm run build
+### Staging/Production (Azure)
+See the comprehensive **[Azure Deployment Guide](deployment/AZURE_DEPLOYMENT_GUIDE.md)** for step-by-step instructions.
 
-# Start API server
-NODE_ENV=production npm run server
+**Quick summary:**
+1. Build Docker images
+2. Push to Azure Container Registry
+3. Deploy to Azure App Services
+4. Configure environment variables
+5. Update Azure AD redirect URIs
 
-# Serve React build with your web server (nginx, etc.)
-```
+**Estimated time:** 60-75 minutes for first deployment
+
+**Services deployed:**
+- Frontend (React + nginx)
+- API (Node.js + Express)
+- PDF Service (Python + Flask)
 
 ## 🤝 Contributing
 
@@ -232,24 +270,31 @@ Proprietary - Internal use only. All rights reserved.
 
 ## 🐛 Known Issues
 
-- Admin panel requires legacy token in development mode
-- Frontend Azure login UI pending (Phase 2)
+- Admin panel uses legacy token for development (Azure AD configured for production)
+- Browser-based storage (saved deals stored locally)
 - N8N approval workflow integration planned
 
 ## 🗺️ Roadmap
 
 ### Phase 1: MVP ✅ Complete
 - [x] RORAC calculator
+- [x] Fee management (credit pulls, UCC, modifications)
 - [x] Smart chatbot
 - [x] Admin panel
 - [x] Azure authentication (backend)
 - [x] Knowledge base
+- [x] PDF export service
+- [x] Docker containerization
+- [x] Azure deployment ready
 
-### Phase 2: Enhanced Auth 🔄 In Progress
+### Phase 2: Production Deployment 🔄 In Progress
+- [x] PDF generation service
+- [x] Azure deployment guide
+- [x] Docker containers
+- [ ] Deploy to staging environment
+- [ ] User acceptance testing
 - [ ] Frontend "Sign in with Microsoft" button
 - [ ] Token refresh handling
-- [ ] Protected routes in React
-- [ ] User profile display
 
 ### Phase 3: Workflow Integration
 - [ ] N8N approval automation

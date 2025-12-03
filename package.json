@@ -23,7 +23,8 @@
   "scripts": {
     "start": "react-scripts start",
     "server": "node server/index.js",
-    "dev": "concurrently \"npm run server\" \"npm start\"",
+    "pdf-service": "cd pdf_service && python app.py",
+    "dev": "concurrently \"npm run server\" \"npm run pdf-service\" \"npm start\"",
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"

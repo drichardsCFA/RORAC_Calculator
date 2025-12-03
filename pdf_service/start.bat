@@ -1,0 +1,3 @@
+@echo off
+echo Starting PDF Generation Service...
+python app.py

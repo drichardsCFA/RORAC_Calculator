@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, Save, X, BarChart3 } from 'lucide-react';
 
-const API_URL = 'http://localhost:3002/api';
+const API_URL = `${process.env.REACT_APP_API_URL || 'http://localhost:3002'}/api`;
 const ADMIN_TOKEN = 'dev-admin-token-12345'; // TODO: Replace with Entra ID
 
 export default function AdminPanel() {
@@ -28,10 +28,25 @@ export default function AdminPanel() {
       const response = await fetch(`${API_URL}/admin/knowledge`, {
         headers: { 'x-admin-token': ADMIN_TOKEN }
       });
+      
+      if (!response.ok) {
+        console.error('Failed to fetch knowledge:', response.status, response.statusText);
+        setKnowledge([]);
+        return;
+      }
+      
       const data = await response.json();
-      setKnowledge(data);
+      
+      // Ensure data is an array
+      if (Array.isArray(data)) {
+        setKnowledge(data);
+      } else {
+        console.error('Invalid knowledge data format:', data);
+        setKnowledge([]);
+      }
     } catch (error) {
       console.error('Failed to fetch knowledge:', error);
+      setKnowledge([]);
     }
   };
 
